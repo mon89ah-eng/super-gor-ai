@@ -1,4 +1,3 @@
-```python
 import os
 import telebot
 import requests
@@ -302,4 +301,3 @@ if __name__ == '__main__':
     threading.Thread(target=run_flask, daemon=True).start()
     print("🚀 Bot started...")
     bot.polling(none_stop=True)
-```
