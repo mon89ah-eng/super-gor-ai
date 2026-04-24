@@ -6,7 +6,7 @@ import threading
 import time
 
 BOT_TOKEN = "8714413951:AAFVBkBairgC25Kjo9Z-aItHUqRuB9V39uY"
-GIGACHAT_KEY = "MDE5ZGJmOGItMmZmYS03ZTQxLWI4ZDYtZjM4NWJiMTJjMzBmOjkwZDFlZWMxLTNhMzUtNDNlMC1iYjgzLTlkM2E2ZThmN2JiNg"
+GIGACHAT_KEY = "MDE5ZGJmOGItMmZmYS03ZTQxLWI4ZDYtZjM4NWJiMTJjMzBmOjVkODE4OGEwLWE4YzMtNGJhMC1iZDlmLTU5YTJlMTZhNGZlMw=="
 
 # Сначала создаём бота
 bot = telebot.TeleBot(BOT_TOKEN)
@@ -64,5 +64,4 @@ def handle_message(message):
 if __name__ == '__main__':
     threading.Thread(target=run_flask, daemon=True).start()
     print("🚀 Bot started with polling...")
-    # Запускаем polling с бесконечным опросом
     bot.polling(none_stop=True, interval=0, timeout=120)
