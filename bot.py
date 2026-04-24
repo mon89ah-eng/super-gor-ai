@@ -8,6 +8,9 @@ BOT_TOKEN = "8714413951:AAFVBkBairgC25Kjo9Z-aItHUqRuB9V39uY"
 GIGACHAT_KEY = "MDE5ZGJmOGItMmZmYS03ZTQxLWI4ZDYtZjM4NWJiMTJjMzBmOjkwZDFlZWMxLTNhMzUtNDNlMC1iYjgzLTlkM2E2ZThmN2JiNg"
 
 bot = telebot.TeleBot(BOT_TOKEN)
+# 👇 ВОТ ЭТА СТРОЧКА ИСПРАВЛЯЕТ ОШИБКУ 409
+bot.remove_webhook() 
+
 app = Flask(__name__)
 
 @app.route('/')
