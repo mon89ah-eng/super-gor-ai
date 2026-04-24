@@ -8,11 +8,9 @@ import sqlite3
 from datetime import datetime, date, timedelta
 import hashlib
 
-# 🔑 Твои ключи
 BOT_TOKEN = "8714413951:AAFVBkBairgC25Kjo9Z-aItHUqRuB9V39uY"
 GIGACHAT_KEY = "MDE5ZGJmOGItMmZmYS03ZTQxLWI4ZDYtZjM4NWJiMTJjMzBmOjVkODE4OGEwLWE4YzMtNGJhMC1iZDlmLTU5YTJlMTZhNGZlMw=="
 
-# 💰 Настройки ЮMoney
 YOUMONEY_ACCOUNT = "4100118733788159"
 YOUMONEY_CLIENT_ID = "12577344FC46155099AB89B76856CF69A450D59BCC7822A817773AAA63BC2CC8"
 YOUMONEY_CLIENT_SECRET = "D3F2EEE6CE0E079C7E1E27180E150898E6D2F3B3EE5B25888D3371B393BCF605CFA284BFFDDCEF36DF53148721EE35E356B2FC70CC47A39D9A93E26C7228D680"
@@ -24,7 +22,6 @@ FREE_DAILY_LIMIT = 10
 bot = telebot.TeleBot(BOT_TOKEN)
 app = Flask(__name__)
 
-# 🗄️ База данных
 def init_db():
     conn = sqlite3.connect('users.db')
     c = conn.cursor()
@@ -50,8 +47,7 @@ def add_user(user_id, username):
     conn.commit()
     conn.close()
 
-def reset_daily_counter(user_id):
-    conn = sqlite3.connect('users.db')
+def reset_daily_counter(user_id):    conn = sqlite3.connect('users.db')
     c = conn.cursor()
     today = date.today().isoformat()
     c.execute('SELECT last_reset FROM users WHERE user_id = ?', (user_id,))
@@ -97,7 +93,11 @@ def get_user_stats(user_id):
     if result:
         msgs_today, is_premium, premium_until, total_msgs = result
         if check_premium(user_id):
-            return f"⭐ **Premium** (до {premium_until})", "♾️ Безлимит", total_msgs        return f"🆓 **Free**", f"{max(0, FREE_DAILY_LIMIT - msgs_today)} осталось", total_msgs
+            status = f"⭐ **Premium** (до {premium_until})"
+            remaining = "♾️ Безлимит"
+        else:
+            status = "🆓 **Free**"            remaining = f"{max(0, FREE_DAILY_LIMIT - msgs_today)} осталось"
+        return status, remaining, total_msgs
     return "🆓 **Free**", f"{FREE_DAILY_LIMIT} осталось", 0
 
 def increment_message_count(user_id):
@@ -110,7 +110,6 @@ def increment_message_count(user_id):
     conn.commit()
     conn.close()
 
-# Удаление вебхука Telegram
 try:
     bot.remove_webhook()
     print("✅ Telegram Webhook removed")
@@ -118,7 +117,6 @@ try:
 except Exception as e:
     print(f"⚠️ Webhook error: {e}")
 
-# Flask
 @app.route('/')
 def home():
     return "✅ SuperGorAI Bot is running!"
@@ -126,14 +124,11 @@ def home():
 def run_flask():
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
 
-# 🔔 WEBHOOK от ЮMoney
 @app.route('/youmoney-webhook', methods=['POST'])
 def youmoney_webhook():
     try:
         data = request.form
         print(f"🔔 Webhook received")
-        
-        # Проверка подписи
         if YOUMONEY_CLIENT_SECRET:
             params_to_sign = {
                 'amount': data.get('amount', ''),
@@ -146,15 +141,13 @@ def youmoney_webhook():
                 'sender': data.get('sender', ''),
                 'unaccepted': data.get('unaccepted', 'false')
             }
-            sorted_params = sorted(params_to_sign.items())            params_str = '&'.join([f"{k}={v}" for k, v in sorted_params])
+            sorted_params = sorted(params_to_sign.items())
+            params_str = '&'.join([f"{k}={v}" for k, v in sorted_params])
             string_to_sign = params_str + YOUMONEY_CLIENT_SECRET
             signature = hashlib.sha1(string_to_sign.encode('utf-8')).hexdigest()
-            received_signature = request.headers.get('X-YooMoney-SHA1')
-            if received_signature and received_signature.lower() != signature.lower():
+            received_signature = request.headers.get('X-YooMoney-SHA1')            if received_signature and received_signature.lower() != signature.lower():
                 print(f"❌ Invalid Signature")
                 return 'ERROR', 403
-
-        # Проверка платежа
         if data.get('notification_type') == 'p2p-incoming' and float(data.get('amount')) == PREMIUM_PRICE:
             label = data.get('label')
             if label and label.startswith('premium_user_'):
@@ -171,14 +164,10 @@ def youmoney_webhook():
                     )
                 except Exception as e:
                     print(f"⚠️ Could not send message: {e}")
-        
         return 'OK', 200
-        
     except Exception as e:
         print(f"❌ Webhook Error: {e}")
         return 'ERROR', 500
-
-# 🤖 Команды бота
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
@@ -195,7 +184,8 @@ def send_welcome(message):
         f"/pay - Оплатить",
         parse_mode='Markdown')
 
-@bot.message_handler(commands=['premium'])def premium_info(message):
+@bot.message_handler(commands=['premium'])
+def premium_info(message):
     if check_premium(message.from_user.id):
         bot.reply_to(message, "⭐ У тебя уже есть Premium!")
         return
@@ -204,8 +194,7 @@ def send_welcome(message):
         f"✅ Безлимитные сообщения\n"
         f"✅ Приоритетная поддержка\n\n"
         f"**Цена:** {PREMIUM_PRICE}₽\n\n"
-        f"Нажми /pay для оплаты!",
-        parse_mode='Markdown')
+        f"Нажми /pay для оплаты!",        parse_mode='Markdown')
 
 @bot.message_handler(commands=['pay'])
 def pay_premium(message):
@@ -244,26 +233,23 @@ def user_stats_cmd(message):
         f"Всего: {total}",
         parse_mode='Markdown')
 
-# 💬 Обработка сообщений@bot.message_handler(func=lambda message: True)
+@bot.message_handler(func=lambda message: True)
 def handle_message(message):
     user_id = message.from_user.id
     add_user(user_id, message.from_user.username or "User")
     reset_daily_counter(user_id)
-    
     if not check_premium(user_id):
         conn = sqlite3.connect('users.db')
         c = conn.cursor()
         c.execute('SELECT messages_today FROM users WHERE user_id = ?', (user_id,))
         count = c.fetchone()[0]
-        conn.close()
-        if count >= FREE_DAILY_LIMIT:
+        conn.close()        if count >= FREE_DAILY_LIMIT:
             bot.reply_to(message,
                 f"⚠️ **Лимит исчерпан!**\n\n"
                 f"Жми /pay для безлимита",
                 parse_mode='Markdown')
             return
         increment_message_count(user_id)
-
     try:
         auth = requests.post(
             "https://ngw.devices.sberbank.ru:9443/api/v2/oauth",
@@ -293,7 +279,8 @@ def handle_message(message):
                 bot.reply_to(message, resp.json()["choices"][0]["message"]["content"])
             else:
                 bot.reply_to(message, "⚠️ Ошибка нейросети.")
-        else:            bot.reply_to(message, "⚠️ Ошибка подключения.")
+        else:
+            bot.reply_to(message, "⚠️ Ошибка подключения.")
     except Exception as e:
         bot.reply_to(message, "⚠️ Произошла ошибка.")
 
