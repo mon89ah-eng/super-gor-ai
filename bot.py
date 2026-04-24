@@ -1,5 +1,3 @@
-Вот исправленный код:
-
 ```python
 import os
 import telebot
