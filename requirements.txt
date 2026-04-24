@@ -1,0 +1,4 @@
+pyTelegramBotAPI==4.15.4
+gigachat==0.1.30
+Flask==3.0.0
+requests==2.31.0
