@@ -1,3 +1,6 @@
+Вот исправленный код:
+
+```python
 import os
 import telebot
 import requests
@@ -47,7 +50,8 @@ def add_user(user_id, username):
     conn.commit()
     conn.close()
 
-def reset_daily_counter(user_id):    conn = sqlite3.connect('users.db')
+def reset_daily_counter(user_id):
+    conn = sqlite3.connect('users.db')
     c = conn.cursor()
     today = date.today().isoformat()
     c.execute('SELECT last_reset FROM users WHERE user_id = ?', (user_id,))
@@ -96,7 +100,8 @@ def get_user_stats(user_id):
             status = f"⭐ **Premium** (до {premium_until})"
             remaining = "♾️ Безлимит"
         else:
-            status = "🆓 **Free**"            remaining = f"{max(0, FREE_DAILY_LIMIT - msgs_today)} осталось"
+            status = "🆓 **Free**"
+            remaining = f"{max(0, FREE_DAILY_LIMIT - msgs_today)} осталось"
         return status, remaining, total_msgs
     return "🆓 **Free**", f"{FREE_DAILY_LIMIT} осталось", 0
 
@@ -128,7 +133,7 @@ def run_flask():
 def youmoney_webhook():
     try:
         data = request.form
-        print(f"🔔 Webhook received")
+        print("🔔 Webhook received")
         if YOUMONEY_CLIENT_SECRET:
             params_to_sign = {
                 'amount': data.get('amount', ''),
@@ -145,10 +150,16 @@ def youmoney_webhook():
             params_str = '&'.join([f"{k}={v}" for k, v in sorted_params])
             string_to_sign = params_str + YOUMONEY_CLIENT_SECRET
             signature = hashlib.sha1(string_to_sign.encode('utf-8')).hexdigest()
-            received_signature = request.headers.get('X-YooMoney-SHA1')            if received_signature and received_signature.lower() != signature.lower():
-                print(f"❌ Invalid Signature")
+            received_signature = request.headers.get('X-YooMoney-SHA1')
+            if received_signature and received_signature.lower() != signature.lower():
+                print("❌ Invalid Signature")
                 return 'ERROR', 403
-        if data.get('notification_type') == 'p2p-incoming' and float(data.get('amount')) == PREMIUM_PRICE:
+        amount = data.get('amount')
+        if (
+            data.get('notification_type') == 'p2p-incoming'
+            and amount is not None
+            and float(amount) == PREMIUM_PRICE
+        ):
             label = data.get('label')
             if label and label.startswith('premium_user_'):
                 user_id = int(label.replace('premium_user_', ''))
@@ -194,7 +205,8 @@ def premium_info(message):
         f"✅ Безлимитные сообщения\n"
         f"✅ Приоритетная поддержка\n\n"
         f"**Цена:** {PREMIUM_PRICE}₽\n\n"
-        f"Нажми /pay для оплаты!",        parse_mode='Markdown')
+        f"Нажми /pay для оплаты!",
+        parse_mode='Markdown')
 
 @bot.message_handler(commands=['pay'])
 def pay_premium(message):
@@ -242,8 +254,10 @@ def handle_message(message):
         conn = sqlite3.connect('users.db')
         c = conn.cursor()
         c.execute('SELECT messages_today FROM users WHERE user_id = ?', (user_id,))
-        count = c.fetchone()[0]
-        conn.close()        if count >= FREE_DAILY_LIMIT:
+        row = c.fetchone()
+        conn.close()
+        count = row[0] if row else 0
+        if count >= FREE_DAILY_LIMIT:
             bot.reply_to(message,
                 f"⚠️ **Лимит исчерпан!**\n\n"
                 f"Жми /pay для безлимита",
@@ -282,6 +296,7 @@ def handle_message(message):
         else:
             bot.reply_to(message, "⚠️ Ошибка подключения.")
     except Exception as e:
+        print(f"⚠️ GigaChat error: {e}")
         bot.reply_to(message, "⚠️ Произошла ошибка.")
 
 if __name__ == '__main__':
@@ -289,3 +304,4 @@ if __name__ == '__main__':
     threading.Thread(target=run_flask, daemon=True).start()
     print("🚀 Bot started...")
     bot.polling(none_stop=True)
+```
