@@ -7,9 +7,8 @@ import time
 import sqlite3
 from datetime import datetime, date, timedelta
 import hashlib
-import hmac
 
-# 🔑 Твои ключи (НЕ ПУБЛИКУЙ ИХ НИГДЕ!)
+# 🔑 Твои ключи
 BOT_TOKEN = "8714413951:AAFVBkBairgC25Kjo9Z-aItHUqRuB9V39uY"
 GIGACHAT_KEY = "MDE5ZGJmOGItMmZmYS03ZTQxLWI4ZDYtZjM4NWJiMTJjMzBmOjVkODE4OGEwLWE4YzMtNGJhMC1iZDlmLTU5YTJlMTZhNGZlMw=="
 
@@ -47,8 +46,8 @@ def add_user(user_id, username):
     today = date.today().isoformat()
     c.execute('''INSERT OR IGNORE INTO users 
                  (user_id, username, last_reset, messages_today) 
-                 VALUES (?, ?, ?, 0)''', (user_id, username, today))    conn.commit()
-    conn.close()
+                 VALUES (?, ?, ?, 0)''', (user_id, username, today))
+    conn.commit()    conn.close()
 
 def reset_daily_counter(user_id):
     conn = sqlite3.connect('users.db')
@@ -57,7 +56,9 @@ def reset_daily_counter(user_id):
     c.execute('SELECT last_reset FROM users WHERE user_id = ?', (user_id,))
     result = c.fetchone()
     if result and result[0] != today:
-        c.execute('''UPDATE users SET messages_today = 0, last_reset = ? WHERE user_id = ?''', (today, user_id))
+        c.execute('''UPDATE users 
+                     SET messages_today = 0, last_reset = ? 
+                     WHERE user_id = ?''', (today, user_id))
         conn.commit()
     conn.close()
 
@@ -67,7 +68,8 @@ def check_premium(user_id):
     c.execute('SELECT is_premium, premium_until FROM users WHERE user_id = ?', (user_id,))
     result = c.fetchone()
     conn.close()
-    if not result: return False
+    if not result:
+        return False
     is_premium, premium_until = result
     if is_premium and premium_until and date.fromisoformat(premium_until) >= date.today():
         return True
@@ -77,7 +79,9 @@ def activate_premium(user_id, days=PREMIUM_DAYS):
     premium_until = (date.today() + timedelta(days=days)).isoformat()
     conn = sqlite3.connect('users.db')
     c = conn.cursor()
-    c.execute('''UPDATE users SET is_premium = 1, premium_until = ? WHERE user_id = ?''', (premium_until, user_id))
+    c.execute('''UPDATE users 
+                 SET is_premium = 1, premium_until = ? 
+                 WHERE user_id = ?''', (premium_until, user_id))
     conn.commit()
     conn.close()
     return premium_until
@@ -85,19 +89,23 @@ def activate_premium(user_id, days=PREMIUM_DAYS):
 def get_user_stats(user_id):
     conn = sqlite3.connect('users.db')
     c = conn.cursor()
-    c.execute('SELECT messages_today, is_premium, premium_until, total_messages FROM users WHERE user_id = ?', (user_id,))
+    c.execute('''SELECT messages_today, is_premium, premium_until, total_messages 
+                 FROM users WHERE user_id = ?''', (user_id,))
     result = c.fetchone()
     conn.close()
     if result:
         msgs_today, is_premium, premium_until, total_msgs = result
         if check_premium(user_id):
-            return f"⭐ **Premium** (до {premium_until})", "♾️ Безлимит", total_msgs
-        return f"🆓 **Free**", f"{max(0, FREE_DAILY_LIMIT - msgs_today)} осталось", total_msgs
+            return f"⭐ **Premium** (до {premium_until})", "♾️ Безлимит", total_msgs        return f"🆓 **Free**", f"{max(0, FREE_DAILY_LIMIT - msgs_today)} осталось", total_msgs
     return "🆓 **Free**", f"{FREE_DAILY_LIMIT} осталось", 0
 
 def increment_message_count(user_id):
-    conn = sqlite3.connect('users.db')    c = conn.cursor()
-    c.execute('UPDATE users SET messages_today = messages_today + 1, total_messages = total_messages + 1 WHERE user_id = ?', (user_id,))
+    conn = sqlite3.connect('users.db')
+    c = conn.cursor()
+    c.execute('''UPDATE users 
+                 SET messages_today = messages_today + 1,
+                     total_messages = total_messages + 1
+                 WHERE user_id = ?''', (user_id,))
     conn.commit()
     conn.close()
 
@@ -117,19 +125,15 @@ def home():
 def run_flask():
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
 
-# 🔔 WEBHOOK от ЮMoney (Автоматическая активация!)
+# 🔔 WEBHOOK от ЮMoney
 @app.route('/youmoney-webhook', methods=['POST'])
 def youmoney_webhook():
     try:
         data = request.form
-        # print(f"🔔 Data: {data}") # Для отладки
+        print(f"🔔 Webhook received")
         
-        # Проверка подписи (Security Check)
+        # Проверка подписи
         if YOUMONEY_CLIENT_SECRET:
-            # ЮMoney отправляет подпись в заголовке
-            # Для P2P уведомлений подпись формируется из параметров + секрет
-            # Параметры должны быть отсортированы
-            
             params_to_sign = {
                 'amount': data.get('amount', ''),
                 'codepro': data.get('codepro', 'false'),
@@ -141,44 +145,31 @@ def youmoney_webhook():
                 'sender': data.get('sender', ''),
                 'unaccepted': data.get('unaccepted', 'false')
             }
-            
-            # Сортируем ключи и формируем строку
-            sorted_params = sorted(params_to_sign.items())
-            params_str = '&'.join([f"{k}={v}" for k, v in sorted_params])
-            string_to_sign = params_str + YOUMONEY_CLIENT_SECRET            
-            # Хэшируем SHA1
+            sorted_params = sorted(params_to_sign.items())            params_str = '&'.join([f"{k}={v}" for k, v in sorted_params])
+            string_to_sign = params_str + YOUMONEY_CLIENT_SECRET
             signature = hashlib.sha1(string_to_sign.encode('utf-8')).hexdigest()
-            
-            # Получаем подпись из заголовка
             received_signature = request.headers.get('X-YooMoney-SHA1')
-            
             if received_signature and received_signature.lower() != signature.lower():
-                print(f"❌ Invalid Signature! Received: {received_signature}, Calculated: {signature}")
+                print(f"❌ Invalid Signature")
                 return 'ERROR', 403
 
-        # Если всё ок, проверяем данные платежа
+        # Проверка платежа
         if data.get('notification_type') == 'p2p-incoming' and float(data.get('amount')) == PREMIUM_PRICE:
             label = data.get('label')
-            
-            # Ищем user_id в метке (формат: premium_user_12345)
             if label and label.startswith('premium_user_'):
                 user_id = int(label.replace('premium_user_', ''))
-                
-                # Активируем премиум
                 premium_until = activate_premium(user_id)
                 print(f"✅ Premium activated for {user_id}")
-                
-                # Уведомляем пользователя
                 try:
                     bot.send_message(
                         user_id,
                         f"🎉 **Оплата прошла успешно!**\n\n"
                         f"✅ **Premium активирован до {premium_until}**\n"
-                        f"Спасибо за поддержку! Теперь у тебя безлимит 🚀",
+                        f"Спасибо за поддержку! 🚀",
                         parse_mode='Markdown'
                     )
                 except Exception as e:
-                    print(f"⚠️ Could not send message to {user_id}: {e}")
+                    print(f"⚠️ Could not send message: {e}")
         
         return 'OK', 200
         
@@ -193,32 +184,26 @@ def send_welcome(message):
     user_id = message.from_user.id
     add_user(user_id, message.from_user.username or "User")
     status, remaining, total = get_user_stats(user_id)
-    
-    bot.reply_to(message,        f"👋 **Привет, {message.from_user.username or 'друг'}!**\n\n"
+    bot.reply_to(message,
+        f"👋 **Привет!**\n\n"
         f"📊 **Твой статус:**\n{status}\n"
-        f"📩 Осталось сегодня: {remaining}\n"
-        f"📈 Всего сообщений: {total}\n\n"
+        f"📩 Осталось: {remaining}\n"
+        f"📈 Всего: {total}\n\n"
         f"💎 **Premium:** {PREMIUM_PRICE}₽/{PREMIUM_DAYS} дней\n"
-        f"→ Безлимитные сообщения\n\n"
-        f"**Команды:**\n"
-        f"/premium - Оформить подписку\n"
-        f"/pay - Оплатить подписку\n"
-        f"/stats - Моя статистика",
+        f"/premium - Подробнее\n"
+        f"/pay - Оплатить",
         parse_mode='Markdown')
 
-@bot.message_handler(commands=['premium'])
-def premium_info(message):
+@bot.message_handler(commands=['premium'])def premium_info(message):
     if check_premium(message.from_user.id):
         bot.reply_to(message, "⭐ У тебя уже есть Premium!")
         return
-    
     bot.reply_to(message,
-        f"⭐ **PREMIUM ПОДПИСКА**\n\n"
-        f"**Преимущества:**\n"
+        f"⭐ **PREMIUM**\n\n"
         f"✅ Безлимитные сообщения\n"
         f"✅ Приоритетная поддержка\n\n"
-        f"**Цена:** {PREMIUM_PRICE}₽ за {PREMIUM_DAYS} дней\n\n"
-        f"Нажми /pay чтобы получить ссылку на оплату!",
+        f"**Цена:** {PREMIUM_PRICE}₽\n\n"
+        f"Нажми /pay для оплаты!",
         parse_mode='Markdown')
 
 @bot.message_handler(commands=['pay'])
@@ -227,8 +212,6 @@ def pay_premium(message):
     if check_premium(user_id):
         bot.reply_to(message, "⭐ У тебя уже есть Premium!")
         return
-    
-    # Ссылка с меткой (Label), чтобы бот понял, кто оплатил
     link = (
         f"https://yoomoney.ru/quickpay/confirm.xml?"
         f"receiver={YOUMONEY_ACCOUNT}&"
@@ -237,13 +220,13 @@ def pay_premium(message):
         f"sum={PREMIUM_PRICE}&"
         f"label=premium_user_{user_id}"
     )
-    
     bot.reply_to(message,
         f"💳 **Оплата Premium**\n\n"
         f"Сумма: **{PREMIUM_PRICE}₽**\n\n"
         f"1. Перейди по ссылке\n"
-        f"2. Оплати картой или СБП\n"
-        f"3. Premium активируется **автоматически** за 10-30 секунд!\n\n"        f"🔗 [**НАЖМИ СЮДА ДЛЯ ОПЛАТЫ**]({link})",
+        f"2. Оплати картой\n"
+        f"3. Premium активируется автоматически!\n\n"
+        f"🔗 [**ОПЛАТИТЬ**]({link})",
         parse_mode='Markdown',
         disable_web_page_preview=True)
 
@@ -253,63 +236,68 @@ def user_stats_cmd(message):
     add_user(user_id, message.from_user.username or "User")
     reset_daily_counter(user_id)
     status, remaining, total = get_user_stats(user_id)
-    bot.reply_to(message, f"📊 **Статистика:**\n{status}\nОсталось: {remaining}\nВсего: {total}", parse_mode='Markdown')
+    bot.reply_to(message,
+        f"📊 **Статистика:**\n"
+        f"{status}\n"
+        f"Осталось: {remaining}\n"
+        f"Всего: {total}",
+        parse_mode='Markdown')
 
-# 💬 Обработка сообщений
-@bot.message_handler(func=lambda message: True)
+# 💬 Обработка сообщений@bot.message_handler(func=lambda message: True)
 def handle_message(message):
     user_id = message.from_user.id
     add_user(user_id, message.from_user.username or "User")
     reset_daily_counter(user_id)
     
-    # Проверка лимита (если нет премиума)
     if not check_premium(user_id):
         conn = sqlite3.connect('users.db')
         c = conn.cursor()
         c.execute('SELECT messages_today FROM users WHERE user_id = ?', (user_id,))
         count = c.fetchone()[0]
         conn.close()
-        
         if count >= FREE_DAILY_LIMIT:
-            bot.reply_to(message, 
-                f"⚠️ **Дневной лимит ({FREE_DAILY_LIMIT}) исчерпан!**\n\n"
-                f"Хочешь безлимит? Жми /pay", 
+            bot.reply_to(message,
+                f"⚠️ **Лимит исчерпан!**\n\n"
+                f"Жми /pay для безлимита",
                 parse_mode='Markdown')
             return
         increment_message_count(user_id)
 
-    # Запрос к GigaChat
     try:
-        # 1. Получаем токен
         auth = requests.post(
             "https://ngw.devices.sberbank.ru:9443/api/v2/oauth",
-            headers={"Authorization": f"Basic {GIGACHAT_KEY}", "RqUID": "00000000-0000-0000-0000-000000000000", "Content-Type": "application/x-www-form-urlencoded"},
+            headers={
+                "Authorization": f"Basic {GIGACHAT_KEY}",
+                "RqUID": "00000000-0000-0000-0000-000000000000",
+                "Content-Type": "application/x-www-form-urlencoded"
+            },
             data={"scope": "GIGACHAT_API_PERS"},
             verify=False
         )
-        
         if auth.status_code == 200:
             token = auth.json()["access_token"]
-            
-            # 2. Отправляем запрос
-            resp = requests.post(                "https://gigachat.devices.sberbank.ru/api/v1/chat/completions",
-                headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-                json={"model": "GigaChat", "messages": [{"role": "user", "content": message.text}]},
+            resp = requests.post(
+                "https://gigachat.devices.sberbank.ru/api/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "model": "GigaChat",
+                    "messages": [{"role": "user", "content": message.text}]
+                },
                 verify=False
             )
-            
             if resp.status_code == 200:
                 bot.reply_to(message, resp.json()["choices"][0]["message"]["content"])
             else:
                 bot.reply_to(message, "⚠️ Ошибка нейросети.")
-        else:
-            bot.reply_to(message, "⚠️ Ошибка подключения к нейросети.")
-            
+        else:            bot.reply_to(message, "⚠️ Ошибка подключения.")
     except Exception as e:
-        bot.reply_to(message, "⚠️ Произошла ошибка. Попробуй позже.")
+        bot.reply_to(message, "⚠️ Произошла ошибка.")
 
 if __name__ == '__main__':
     init_db()
     threading.Thread(target=run_flask, daemon=True).start()
-    print("🚀 Bot started with YooMoney Webhook...")
+    print("🚀 Bot started...")
     bot.polling(none_stop=True)
