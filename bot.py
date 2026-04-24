@@ -47,7 +47,8 @@ def add_user(user_id, username):
     c.execute('''INSERT OR IGNORE INTO users 
                  (user_id, username, last_reset, messages_today) 
                  VALUES (?, ?, ?, 0)''', (user_id, username, today))
-    conn.commit()    conn.close()
+    conn.commit()
+    conn.close()
 
 def reset_daily_counter(user_id):
     conn = sqlite3.connect('users.db')
