@@ -128,9 +128,9 @@ def check_limit(user_id, message):
     count = get_messages_today(user_id)
     if count >= FREE_DAILY_LIMIT:
         bot.reply_to(message,
-            "⚠️ *Лимит исчерпан!*\n\nНажми кнопку ниже для подключения Premium 👇",
+            "⚠️ *Лимит исчерпан!*\n\nНажми кнопку для подключения Premium 👇",
             parse_mode='Markdown',
-            reply_markup=premium_button())
+            reply_markup=pay_inline(user_id))
         return False
     increment_message_count(user_id)
     return True
@@ -147,11 +147,6 @@ def main_keyboard():
     )
     return markup
 
-def premium_button():
-    markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("💎 Подключить Premium", callback_query_id="pay"))
-    return markup
-
 def pay_inline(user_id):
     link = (
         f"https://yoomoney.ru/quickpay/confirm.xml?"
@@ -162,7 +157,7 @@ def pay_inline(user_id):
         f"label=premium_user_{user_id}"
     )
     markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("💳 Оплатить {PREMIUM_PRICE}₽".format(PREMIUM_PRICE=PREMIUM_PRICE), url=link))
+    markup.add(types.InlineKeyboardButton(f"💳 Оплатить {PREMIUM_PRICE}₽", url=link))
     return markup
 
 
@@ -195,7 +190,6 @@ def generate_image(prompt):
         token = get_gigachat_token()
         if not token:
             return None
-
         response = requests.post(
             "https://gigachat.devices.sberbank.ru/api/v1/chat/completions",
             headers={
@@ -212,7 +206,6 @@ def generate_image(prompt):
             verify=False,
             timeout=60
         )
-
         if response.status_code == 200:
             content = response.json()["choices"][0]["message"]["content"]
             match = re.search(r'<img[^>]+src="([^"]+)"', content)
@@ -256,7 +249,6 @@ def youmoney_webhook():
     try:
         data = request.form
         print("🔔 Webhook received")
-
         if YOUMONEY_CLIENT_SECRET:
             string_to_sign = (
                 f"{data.get('notification_type', '')}&"
@@ -274,7 +266,6 @@ def youmoney_webhook():
             if received_signature and received_signature.lower() != signature.lower():
                 print("❌ Invalid Signature")
                 return 'ERROR', 403
-
         amount = data.get('amount')
         if (
             data.get('notification_type') == 'p2p-incoming'
@@ -297,7 +288,6 @@ def youmoney_webhook():
                     )
                 except Exception as e:
                     print(f"⚠️ Could not send message: {e}")
-
         return 'OK', 200
     except Exception as e:
         print(f"❌ Webhook Error: {e}")
@@ -338,7 +328,7 @@ def stats_cmd(message):
 def pay_cmd(message):
     user_id = message.from_user.id
     if check_premium(user_id):
-        bot.reply_to(message, "⭐ У тебя уже есть Premium!")
+        bot.reply_to(message, "⭐ У тебя уже есть Premium!", reply_markup=main_keyboard())
         return
     bot.reply_to(message,
         f"💎 *Premium — {PREMIUM_PRICE}₽ / {PREMIUM_DAYS} дней*\n\n"
@@ -374,12 +364,11 @@ def button_stats(message):
 @bot.message_handler(func=lambda m: m.text == "🎨 Создать изображение")
 def button_image(message):
     bot.reply_to(message,
-        "🎨 Напиши что нарисовать:\n\nПример: *нарисуй котика в космосе*\nили используй команду */image описание*",
+        "🎨 Напиши что нарисовать:\n\n"
+        "Пример: *нарисуй котика в космосе*\n"
+        "или используй команду */image описание*",
         parse_mode='Markdown',
         reply_markup=main_keyboard())
-
-
-# ───────────────────────── ГЕНЕРАЦИЯ ПО КОМАНДЕ /image ─────────────────────────
 
 @bot.message_handler(commands=['image'])
 def image_cmd(message):
@@ -395,7 +384,7 @@ def image_cmd(message):
     _do_generate_image(message, prompt)
 
 
-# ───────────────────────── ОБРАБОТКА ВСЕХ СООБЩЕНИЙ ─────────────────────────
+# ───────────────────────── ОБРАБОТКА СООБЩЕНИЙ ─────────────────────────
 
 @bot.message_handler(func=lambda message: True)
 def handle_message(message):
@@ -404,7 +393,6 @@ def handle_message(message):
     reset_daily_counter(user_id)
     text = message.text or ""
 
-    # Триггер генерации картинки
     if text.lower().startswith("нарисуй"):
         if not check_limit(user_id, message):
             return
@@ -415,7 +403,6 @@ def handle_message(message):
         _do_generate_image(message, prompt)
         return
 
-    # Обычный чат через GigaChat
     if not check_limit(user_id, message):
         return
 
@@ -447,7 +434,7 @@ def handle_message(message):
         bot.reply_to(message, "⚠️ Произошла ошибка.")
 
 
-# ───────────────────────── ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ КАРТИНКИ ─────────────────────────
+# ───────────────────────── КАРТИНКА ─────────────────────────
 
 def _do_generate_image(message, prompt):
     msg = bot.reply_to(message, "🎨 Генерирую картинку, подожди...")
