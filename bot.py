@@ -24,6 +24,9 @@ FREE_DAILY_LIMIT = 10
 bot = telebot.TeleBot(BOT_TOKEN)
 app = Flask(__name__)
 
+# Хранилище истории диалогов в памяти
+user_histories = {}
+
 
 # ───────────────────────── БД ─────────────────────────
 
@@ -141,7 +144,7 @@ def check_limit(user_id, message):
 def main_keyboard():
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
     markup.add(
-        types.KeyboardButton("🎨 Создать изображение"),
+        types.KeyboardButton("🔄 Новый чат"),
         types.KeyboardButton("💎 Подключить Premium"),
         types.KeyboardButton("📊 Статистика")
     )
@@ -152,7 +155,7 @@ def pay_inline(user_id):
         f"https://yoomoney.ru/quickpay/confirm.xml?"
         f"receiver={YOUMONEY_ACCOUNT}&"
         f"targets=Premium+subscription&"
-        f"paymentType=S&"
+        f"paymentType=AC&"
         f"sum={PREMIUM_PRICE}&"
         f"label=premium_user_{user_id}"
     )
@@ -180,48 +183,6 @@ def get_gigachat_token():
             return response.json().get("access_token")
     except Exception as e:
         print(f"⚠️ Token error: {e}")
-    return None
-
-
-# ───────────────────────── ГЕНЕРАЦИЯ КАРТИНКИ ─────────────────────────
-
-def generate_image(prompt):
-    try:
-        token = get_gigachat_token()
-        if not token:
-            return None
-        response = requests.post(
-            "https://gigachat.devices.sberbank.ru/api/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {token}",
-                "Content-Type": "application/json"
-            },
-            json={
-                "model": "GigaChat",
-                "messages": [
-                    {"role": "user", "content": f"Нарисуй: {prompt}"}
-                ],
-                "function_call": "auto"
-            },
-            verify=False,
-            timeout=60
-        )
-        if response.status_code == 200:
-            content = response.json()["choices"][0]["message"]["content"]
-            match = re.search(r'<img[^>]+src="([^"]+)"', content)
-            if match:
-                file_id = match.group(1)
-                img_response = requests.get(
-                    f"https://gigachat.devices.sberbank.ru/api/v1/files/{file_id}/content",
-                    headers={"Authorization": f"Bearer {token}"},
-                    verify=False,
-                    timeout=30
-                )
-                if img_response.status_code == 200:
-                    return img_response.content
-        print(f"⚠️ Image response: {response.status_code} {response.text[:200]}")
-    except Exception as e:
-        print(f"⚠️ generate_image error: {e}")
     return None
 
 
@@ -333,14 +294,31 @@ def pay_cmd(message):
     bot.reply_to(message,
         f"💎 *Premium — {PREMIUM_PRICE}₽ / {PREMIUM_DAYS} дней*\n\n"
         f"✅ Безлимитные сообщения\n"
-        f"✅ Генерация картинок\n"
         f"✅ Приоритетная поддержка\n\n"
         f"Нажми кнопку для оплаты 👇",
         parse_mode='Markdown',
         reply_markup=pay_inline(user_id))
 
+@bot.message_handler(commands=['newchat'])
+def newchat_cmd(message):
+    user_id = message.from_user.id
+    user_histories[user_id] = []
+    bot.reply_to(message,
+        "🔄 *Новый чат начат!*\n\nИстория очищена, можем общаться заново 👇",
+        parse_mode='Markdown',
+        reply_markup=main_keyboard())
+
 
 # ───────────────────────── КНОПКИ КЛАВИАТУРЫ ─────────────────────────
+
+@bot.message_handler(func=lambda m: m.text == "🔄 Новый чат")
+def button_newchat(message):
+    user_id = message.from_user.id
+    user_histories[user_id] = []
+    bot.reply_to(message,
+        "🔄 *Новый чат начат!*\n\nИстория очищена, можем общаться заново 👇",
+        parse_mode='Markdown',
+        reply_markup=main_keyboard())
 
 @bot.message_handler(func=lambda m: m.text == "💎 Подключить Premium")
 def button_premium(message):
@@ -351,7 +329,6 @@ def button_premium(message):
     bot.reply_to(message,
         f"💎 *Premium — {PREMIUM_PRICE}₽ / {PREMIUM_DAYS} дней*\n\n"
         f"✅ Безлимитные сообщения\n"
-        f"✅ Генерация картинок\n"
         f"✅ Приоритетная поддержка\n\n"
         f"Нажми кнопку для оплаты 👇",
         parse_mode='Markdown',
@@ -360,28 +337,6 @@ def button_premium(message):
 @bot.message_handler(func=lambda m: m.text == "📊 Статистика")
 def button_stats(message):
     stats_cmd(message)
-
-@bot.message_handler(func=lambda m: m.text == "🎨 Создать изображение")
-def button_image(message):
-    bot.reply_to(message,
-        "🎨 Напиши что нарисовать:\n\n"
-        "Пример: *нарисуй котика в космосе*\n"
-        "или используй команду */image описание*",
-        parse_mode='Markdown',
-        reply_markup=main_keyboard())
-
-@bot.message_handler(commands=['image'])
-def image_cmd(message):
-    user_id = message.from_user.id
-    add_user(user_id, message.from_user.username or "User")
-    reset_daily_counter(user_id)
-    if not check_limit(user_id, message):
-        return
-    prompt = message.text.replace('/image', '', 1).strip()
-    if not prompt:
-        bot.reply_to(message, "✏️ Напиши описание после команды.\nПример: /image котик в космосе")
-        return
-    _do_generate_image(message, prompt)
 
 
 # ───────────────────────── ОБРАБОТКА СООБЩЕНИЙ ─────────────────────────
@@ -393,18 +348,17 @@ def handle_message(message):
     reset_daily_counter(user_id)
     text = message.text or ""
 
-    if text.lower().startswith("нарисуй"):
-        if not check_limit(user_id, message):
-            return
-        prompt = text[7:].strip()
-        if not prompt:
-            bot.reply_to(message, "✏️ Напиши что нарисовать после слова «нарисуй»")
-            return
-        _do_generate_image(message, prompt)
-        return
-
     if not check_limit(user_id, message):
         return
+
+    # Добавляем сообщение в историю
+    if user_id not in user_histories:
+        user_histories[user_id] = []
+    user_histories[user_id].append({"role": "user", "content": text})
+
+    # Оставляем только последние 10 сообщений
+    if len(user_histories[user_id]) > 10:
+        user_histories[user_id] = user_histories[user_id][-10:]
 
     try:
         token = get_gigachat_token()
@@ -419,33 +373,21 @@ def handle_message(message):
             },
             json={
                 "model": "GigaChat",
-                "messages": [{"role": "user", "content": text}]
+                "messages": user_histories[user_id]
             },
             verify=False,
             timeout=30
         )
         if resp.status_code == 200:
-            bot.reply_to(message, resp.json()["choices"][0]["message"]["content"])
+            reply = resp.json()["choices"][0]["message"]["content"]
+            user_histories[user_id].append({"role": "assistant", "content": reply})
+            bot.reply_to(message, reply)
         else:
             print(f"⚠️ GigaChat error: {resp.status_code} {resp.text[:200]}")
             bot.reply_to(message, "⚠️ Ошибка нейросети.")
     except Exception as e:
         print(f"⚠️ handle_message error: {e}")
         bot.reply_to(message, "⚠️ Произошла ошибка.")
-
-
-# ───────────────────────── КАРТИНКА ─────────────────────────
-
-def _do_generate_image(message, prompt):
-    msg = bot.reply_to(message, "🎨 Генерирую картинку, подожди...")
-    image_data = generate_image(prompt)
-    if image_data:
-        bot.send_photo(message.chat.id, image_data, reply_to_message_id=message.message_id)
-        bot.delete_message(message.chat.id, msg.message_id)
-    else:
-        bot.edit_message_text(
-            "⚠️ Не удалось сгенерировать картинку. Попробуй другой запрос.",
-            message.chat.id, msg.message_id)
 
 
 # ───────────────────────── ЗАПУСК ─────────────────────────
